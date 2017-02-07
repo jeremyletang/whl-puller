@@ -1,0 +1,13 @@
+[package]
+name = "whlp"
+version = "0.1.0"
+authors = ["jeremyletang <letang.jeremy@gmail.com>"]
+
+[dependencies]
+clap = "2.20.3"
+env_logger = "0.4.0"
+hyper = "0.10.4"
+log = "0.3.6"
+serde = "^0.8"
+# serde_xml = "0.9.1"
+serde_derive = "0.9.6"
