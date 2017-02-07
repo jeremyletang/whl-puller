@@ -12,27 +12,14 @@ extern crate env_logger;
 extern crate hyper;
 #[macro_use]
 extern crate log;
-// extern crate serde;
-// #[macro_use]
-//extern crate serde_derive;
-// extern crate serde_xml;
+extern crate xml;
 
 use clap::{App, Arg};
-use hyper::Client;
-use serde::Deserialize;
-use std::error::Error;
-use std::io::Read;
+use monument::Monument;
+use xml::reader::{XmlEvent, EventReader};
 
-const UNESCO_XML: &'static str = "http://whc.unesco.org/en/list/xml/";
-
-// #[derive(PartialEq, Debug, Serialize, Deserialize)]
-struct Monument {
-    pub category: String,
-    pub criteria: String,
-    pub date_inscribed: String,
-    pub unique_number: i32,
-    pub id_number: i32,
-}
+mod monument;
+mod unesco_xml;
 
 struct CmdLineArgs {
     pub pq_addr: String,
@@ -61,36 +48,57 @@ fn parse_cmdline() -> CmdLineArgs {
     }
 }
 
+fn read_xml(xml: &str) -> Vec<Monument> {
+    let parser = EventReader::new(xml.as_bytes());
+    let mut current_monument = Monument::new();
+    let mut monuments = vec![];
+    let mut in_row = false;
+    let mut current_element = String::new();
+
+    for e in parser {
+        match e {
+            Ok(XmlEvent::StartElement { name, .. }) => {
+                if !in_row && &*name.local_name == "row".to_string() {
+                    in_row = true;
+                } else if in_row {
+                    current_element = name.local_name.clone();
+                }
+            }
+            Ok(XmlEvent::EndElement { name }) => {
+                if in_row && &*name.local_name == "row".to_string() {
+                    in_row = false;
+                    monuments.push(current_monument);
+                    current_monument = Monument::new();
+                    current_element = String::new();
+                }
+            }
+            Ok(XmlEvent::Characters(s))=> {
+                current_monument.set(&*current_element, &*s);
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+                break;
+            }
+            _ => {/* ignore rest */}
+        }
+    }
+
+    return monuments;
+}
+
 fn main() {
     let _ = env_logger::init();
     let args = parse_cmdline();
-    let whc_payload = match Client::new().get(UNESCO_XML).send() {
-        Ok(r) => {
-            if r.status == hyper::Ok {
-                let mut buf = String::new();
-                match r.read_to_string(&mut buf) {
-                    Ok(_) => buf,
-                    Err(e) => {
-                        error!("unable to red http request payload, try again");
-                        return
-                    }
-                }
-            } else {
-                error!("unexpected http status, try again");
-                return
-            }
-        },
+    let whl_payload = match unesco_xml::get(args.xml) {
+        Ok(p) => p,
         Err(e) => {
-            error!("unable to get whc xml, {}", e.description());
+            error!("{}", e);
             return
         }
     };
-
-    let whc: Vec<Monument> = match serde_xml::from_str(&*whc_payload) {
-        Ok(ms) => ms,
-        Err(e) => {
-            error!("invalid whc xml format, {}", e.description());
-            return
-        }
-    };
+    println!("payload size: {}", whl_payload.len());
+    let monuments = read_xml(&*whl_payload);
+    for m in monuments {
+        println!("{:?}", m);
+    }
 }
