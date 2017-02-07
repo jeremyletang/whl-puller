@@ -10,31 +10,86 @@ use std::str::FromStr;
 #[derive(PartialEq, Debug)]
 pub struct Monument {
     pub category: Option<String>,
-    pub criteria: Option<String>,
+    pub criteria_txt: Option<String>,
+    pub danger: Option<String>,
     pub date_inscribed: Option<String>,
-    pub unique_number: Option<i32>,
+    pub extension: Option<i32>,
+    pub historical_description: Option<String>,
+    pub http_url: Option<String>,
     pub id_number: Option<i32>,
+    pub image_url: Option<String>,
+    pub iso_code: Option<String>,
+    pub justification: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub location: Option<String>,
+    pub long_description: Option<String>,
+    pub region: Option<String>,
+    pub revision: Option<i32>,
+    pub secondary_dates: Option<String>,
+    pub short_description: Option<String>,
+    pub site: Option<String>,
+    pub states: Option<String>,
+    pub transboundary: Option<i32>,
+    pub unique_number: Option<i32>,
 }
 
 impl Monument {
     pub fn new() -> Monument {
         Monument {
             category: None,
-            criteria: None,
+            criteria_txt: None,
+            danger: None,
             date_inscribed: None,
-            unique_number: None,
+            extension: None,
+            historical_description: None,
+            http_url: None,
             id_number: None,
+            image_url: None,
+            iso_code: None,
+            justification: None,
+            latitude: None,
+            longitude: None,
+            location: None,
+            long_description: None,
+            region: None,
+            revision: None,
+            secondary_dates: None,
+            short_description: None,
+            site: None,
+            states: None,
+            transboundary: None,
+            unique_number: None,
+
         }
     }
 
     pub fn set(&mut self, field: &str, value: &str) {
         match field {
-            "category" => self.category = Some(value.to_string()),
-            "criteria" => self.criteria = Some(value.to_string()),
-            "date_inscribed" => self.date_inscribed = Some(value.to_string()),
-            "unique_number" => self.unique_number = Some(i32::from_str(value).unwrap()),
-            "id_number" => self.id_number = Some(i32::from_str(value).unwrap()),
-            _ => {/* unknown name */}
+            "category" => self.category = FromStr::from_str(value).ok(),
+            "criteria_txt" => self.criteria_txt = FromStr::from_str(value).ok(),
+            "danger" => self.danger = FromStr::from_str(value).ok(),
+            "date_inscribed" => self.date_inscribed = FromStr::from_str(value).ok(),
+            "extension" => self.extension = FromStr::from_str(value).ok(),
+            "historical_description" => self.historical_description = FromStr::from_str(value).ok(),
+            "http_url" => self.http_url = FromStr::from_str(value).ok(),
+            "id_number" => self.id_number = FromStr::from_str(value).ok(),
+            "image_url" => self.image_url = FromStr::from_str(value).ok(),
+            "iso_code" => self.iso_code = FromStr::from_str(value).ok(),
+            "justification" => self.justification = FromStr::from_str(value).ok(),
+            "latitude" => self.latitude = FromStr::from_str(value).ok(),
+            "longitude" => self.longitude = FromStr::from_str(value).ok(),
+            "location" => self.location = FromStr::from_str(value).ok(),
+            "long_description" => self.long_description = FromStr::from_str(value).ok(),
+            "region" => self.region = FromStr::from_str(value).ok(),
+            "revision" => self.revision = FromStr::from_str(value).ok(),
+            "secondary_dates" => self.secondary_dates = FromStr::from_str(value).ok(),
+            "short_description" => self.short_description = FromStr::from_str(value).ok(),
+            "site" => self.site = FromStr::from_str(value).ok(),
+            "states" => self.states = FromStr::from_str(value).ok(),
+            "transboundary" => self.transboundary = FromStr::from_str(value).ok(),
+            "unique_number" => self.unique_number = FromStr::from_str(value).ok(),
+    _ => {/* unknown name */}
         }
     }
 }

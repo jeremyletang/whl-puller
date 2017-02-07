@@ -27,7 +27,7 @@ struct CmdLineArgs {
 }
 
 fn parse_cmdline() -> CmdLineArgs {
-    let matches = App::new("arrakis_standalone")
+    let matches = App::new("whlp")
         .version("v0.1.0")
         .global_setting(clap::AppSettings::ColoredHelp)
         .about("retrieve information from unesco whc and store them in pq")
