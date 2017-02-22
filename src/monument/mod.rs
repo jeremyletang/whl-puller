@@ -6,9 +6,14 @@
 // except according to those terms.
 
 use std::str::FromStr;
+use self::schema::monuments;
 
-#[derive(PartialEq, Debug)]
+pub mod schema;
+
+#[derive(PartialEq, Debug, Queryable, Insertable)]
+#[table_name="monuments"]
 pub struct Monument {
+    pub id: String,
     pub category: Option<String>,
     pub criteria_txt: Option<String>,
     pub danger: Option<String>,
@@ -20,8 +25,8 @@ pub struct Monument {
     pub image_url: Option<String>,
     pub iso_code: Option<String>,
     pub justification: Option<String>,
-    pub latitude: Option<f64>,
-    pub longitude: Option<f64>,
+    pub latitude: Option<f32>,
+    pub longitude: Option<f32>,
     pub location: Option<String>,
     pub long_description: Option<String>,
     pub region: Option<String>,
@@ -37,6 +42,7 @@ pub struct Monument {
 impl Monument {
     pub fn new() -> Monument {
         Monument {
+            id: String::new(),
             category: None,
             criteria_txt: None,
             danger: None,
@@ -60,7 +66,6 @@ impl Monument {
             states: None,
             transboundary: None,
             unique_number: None,
-
         }
     }
 
@@ -89,7 +94,7 @@ impl Monument {
             "states" => self.states = FromStr::from_str(value).ok(),
             "transboundary" => self.transboundary = FromStr::from_str(value).ok(),
             "unique_number" => self.unique_number = FromStr::from_str(value).ok(),
-    _ => {/* unknown name */}
+            _ => {/* unknown name */}
         }
     }
 }

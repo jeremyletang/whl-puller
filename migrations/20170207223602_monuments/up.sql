@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS access_tokens
+CREATE TABLE IF NOT EXISTS monuments
 (
   id                      VARCHAR(36) PRIMARY KEY NOT NULL,
   category                TEXT        DEFAULT NULL,
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS access_tokens
   region                  TEXT        DEFAULT NULL,
   revision                INT         DEFAULT NULL,
   secondary_dates         TEXT        DEFAULT NULL,
-  short_descritption      TEXT        DEFAULT NULL,
+  short_description       TEXT        DEFAULT NULL,
   site                    TEXT        DEFAULT NULL,
   states                  TEXT        DEFAULT NULL,
   transboundary           INT         DEFAULT NULL,

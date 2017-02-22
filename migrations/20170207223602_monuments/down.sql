@@ -1,1 +1,1 @@
-DROP TABLE migrations;
+DROP TABLE monuments;

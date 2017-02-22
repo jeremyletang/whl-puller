@@ -5,17 +5,25 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![feature(proc_macro)]
-
+//extern crate chrono;
+#[macro_use]
+extern crate diesel;
+#[macro_use]
+extern crate diesel_codegen;
+extern crate dotenv;
 extern crate clap;
 extern crate env_logger;
 extern crate hyper;
 #[macro_use]
 extern crate log;
+extern crate uuid;
 extern crate xml;
 
 use clap::{App, Arg};
+use diesel::prelude::*;
+use diesel::pg::PgConnection;
 use monument::Monument;
+use uuid::Uuid;
 use xml::reader::{XmlEvent, EventReader};
 
 mod monument;
@@ -86,6 +94,24 @@ fn read_xml(xml: &str) -> Vec<Monument> {
     return monuments;
 }
 
+pub fn establish_connection(pq_addr: &str) -> PgConnection {
+    PgConnection::establish(pq_addr)
+        .expect(&format!("Error connecting to {}", pq_addr))
+}
+
+pub fn insert_monuments(mut monuments: Vec<Monument>, pq_addr: &str) {
+    let conn = establish_connection(pq_addr);
+    use monument::schema::monuments;
+
+    for m in &mut monuments {
+        m.id = Uuid::new_v4().to_string();
+        diesel::insert(m).into(monuments::table)
+            .execute(&conn)
+            .expect("Error saving new new monument");
+        info!("new monument added: {:?}", m)
+    }
+}
+
 fn main() {
     let _ = env_logger::init();
     let args = parse_cmdline();
@@ -96,9 +122,7 @@ fn main() {
             return
         }
     };
-    println!("payload size: {}", whl_payload.len());
+    // println!("file size: {}", whl_payload.len());
     let monuments = read_xml(&*whl_payload);
-    for m in monuments {
-        println!("{:?}", m);
-    }
+    insert_monuments(monuments, &*args.pq_addr);
 }
