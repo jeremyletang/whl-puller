@@ -22,7 +22,10 @@ extern crate xml;
 use clap::{App, Arg};
 use diesel::prelude::*;
 use diesel::pg::PgConnection;
+use diesel::migrations;
 use monument::Monument;
+use std::io::stdout;
+use std::path::Path;
 use uuid::Uuid;
 use xml::reader::{XmlEvent, EventReader};
 
@@ -31,6 +34,7 @@ mod unesco_xml;
 
 struct CmdLineArgs {
     pub pq_addr: String,
+    pub migrations: Option<String>,
     pub xml: Option<String>,
 }
 
@@ -44,6 +48,10 @@ fn parse_cmdline() -> CmdLineArgs {
              .help("postgres server address")
              .takes_value(true)
              .required(true))
+        .arg(Arg::with_name("migrations")
+             .long("migrations")
+             .help("database migrations folder")
+             .takes_value(true))
         .arg(Arg::with_name("xml")
              .long("xml")
              .help("use local whc xml file")
@@ -52,6 +60,7 @@ fn parse_cmdline() -> CmdLineArgs {
 
     CmdLineArgs {
         pq_addr: matches.value_of("pq-addr").unwrap().into(),
+        migrations: matches.value_of("migrations").map_or(None, |s| Some(s.into())),
         xml: matches.value_of("xml").map_or(None, |s| Some(s.into())),
     }
 }
@@ -99,9 +108,32 @@ pub fn establish_connection(pq_addr: &str) -> PgConnection {
         .expect(&format!("Error connecting to {}", pq_addr))
 }
 
-pub fn insert_monuments(mut monuments: Vec<Monument>, pq_addr: &str) {
-    let conn = establish_connection(pq_addr);
+pub fn run_migrations(conn: &PgConnection, migrations_path: Option<String>) {
+    // if migrations are specified by the user, just run then
+    // or do nothing
+    match migrations_path {
+        Some(m) => {
+            info!("try to find migrations in path: {}", m);
+            match migrations::search_for_migrations_directory(Path::new(&*m)) {
+                Ok(pb) => {
+                    info!("migrations found at: {}", pb.to_str().unwrap());
+                    info!("executing migrations ...");
+                    match migrations::run_pending_migrations_in_directory(conn, pb.as_path(), &mut stdout()) {
+                        Ok(_) => info!("migrations executed with success !"),
+                        Err(e) => panic!(format!("{}", e)),
+                    }
+                },
+                Err(e) => panic!(format!("{}", e)),
+            }
+        },
+        None => {}
+    }
+}
+
+pub fn insert_monuments(mut monuments: Vec<Monument>, pq_addr: &str, migrations_path: Option<String>) {
     use monument::schema::monuments;
+    let conn = establish_connection(pq_addr);
+    run_migrations(&conn, migrations_path);
 
     for m in &mut monuments {
         m.id = Uuid::new_v4().to_string();
@@ -124,5 +156,5 @@ fn main() {
     };
     // println!("file size: {}", whl_payload.len());
     let monuments = read_xml(&*whl_payload);
-    insert_monuments(monuments, &*args.pq_addr);
+    insert_monuments(monuments, &*args.pq_addr, args.migrations);
 }
