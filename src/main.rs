@@ -34,6 +34,7 @@ use std::io::stdout;
 use std::path::Path;
 use uuid::Uuid;
 use xml::reader::{XmlEvent, EventReader};
+use flickr_api::FindByLatLonError;
 
 mod domain;
 mod flickr_api;
@@ -196,7 +197,26 @@ pub fn insert_licenses(conn: &PgConnection, key: &str) {
 }
 
 pub fn insert_pictures(conn: &PgConnection, monuments: &Vec<Monument>, key: &str) {
+    use domain::schema::pictures;
 
+    let mut pictures_inserted = 0;
+
+    for m in monuments {
+        let mut pid: Option<String> = None;
+        // get place id first
+        if m.latitude.is_some() && m.longitude.is_some() {
+            pid = match flickr_api::get_place(key, m.latitude.unwrap(), m.longitude.unwrap()) {
+                Ok(pid) => Some(pid),
+                Err(e) => match e {
+                    FindByLatLonError::NoMatchingPlace => None,
+                    FindByLatLonError::RequestError(e) => panic!(format!("{}", e))
+                }
+            };
+        }
+        println!("NEW GROUP ID: {:?}", pid);
+    }
+
+    info!("{} new pictures saved", pictures_inserted);
 }
 
 fn main() {
@@ -228,4 +248,5 @@ fn main() {
         },
         None => {},
     }
+
 }

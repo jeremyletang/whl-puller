@@ -53,3 +53,56 @@ pub fn get_licenses(key: &str) -> Result<Vec<License>, String> {
         Err(e) => Err(format!("unable to get flickr licenses, {}", e.description()))
     }
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Place {
+    pub place_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Places {
+    pub place: Vec<Place>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FindByLatLonPayload {
+    pub places: Places
+}
+
+pub enum FindByLatLonError {
+    RequestError(String),
+    NoMatchingPlace
+}
+
+pub fn get_place(key: &str, lat: f32, lng: f32) -> Result<String, FindByLatLonError> {
+    info!("calling flickr.places.findByLatLon api");
+    let url = format!("https://api.flickr.com/services/rest/?method=flickr.places.findByLatLon&api_key={}&lat={}&lon={}&format=json&nojsoncallback=1", key, lat, lng);
+    match Client::new().unwrap().get(&*url).send() {
+        Ok(mut r) => {
+            if r.status().is_success() {
+                let mut buf = String::new();
+                match r.read_to_string(&mut buf) {
+                    Ok(_) => {
+                        match serde_json::from_str::<FindByLatLonPayload>(&*buf) {
+                            Ok(v) => {
+                                if v.places.place.len() > 0 {
+                                    Ok(v.places.place[0].place_id.clone())
+                                } else {
+                                    Err(FindByLatLonError::NoMatchingPlace)
+                                }
+                            },
+                            Err(e) => Err(FindByLatLonError::RequestError(
+                                format!("unable to deserialize payload, try again, {}", e)))
+                        }
+                    },
+                    Err(e) => Err(FindByLatLonError::RequestError(
+                        format!("unable to read http request payload, try again, {}", e)))
+                }
+            } else {
+                Err(FindByLatLonError::RequestError(format!("unexpected http status, try again")))
+            }
+        },
+        Err(e) => Err(FindByLatLonError::RequestError(
+            format!("unable to get flickr groupd, {}", e.description())))
+    }
+}

@@ -6,8 +6,11 @@
 // except according to those terms.
 
 use flickr_api::License as RawLicense;
-use self::schema::monuments;
-use self::schema::licenses;
+use self::schema::{
+    licenses,
+    monuments,
+    pictures
+};
 use std::str::FromStr;
 
 pub mod schema;
@@ -119,4 +122,15 @@ impl From<RawLicense> for License {
             url: rl.url,
         }
     }
+}
+
+#[derive(Clone, PartialEq, Debug, Queryable, Insertable)]
+#[table_name="pictures"]
+pub struct Picture {
+    pub id: String,
+    pub flickr_id: i32,
+    pub monument_id: String,
+    pub license_id: String,
+    pub author: String,
+    pub url: String,
 }
