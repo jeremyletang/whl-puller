@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS monuments
   extension               INT         DEFAULT NULL,
   historical_description  TEXT        DEFAULT NULL,
   http_url                TEXT        DEFAULT NULL,
-  id_number               INT         DEFAULT NULL,
+  id_number               INT         UNIQUE DEFAULT NULL,
   image_url               TEXT        DEFAULT NULL,
   iso_code                TEXT        DEFAULT NULL,
   justification           TEXT        DEFAULT NULL,

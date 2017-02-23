@@ -5,8 +5,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![feature(proc_macro)]
-
 //extern crate chrono;
 #[macro_use]
 extern crate diesel;
@@ -27,9 +25,10 @@ extern crate uuid;
 extern crate xml;
 
 use clap::{App, Arg};
+use diesel::migrations;
 use diesel::prelude::*;
 use diesel::pg::PgConnection;
-use diesel::migrations;
+use diesel::result::{Error, DatabaseErrorKind};
 use domain::{Monument, License};
 use std::io::stdout;
 use std::path::Path;
@@ -146,15 +145,24 @@ pub fn run_migrations(conn: &PgConnection, migrations_path: Option<String>) {
 
 pub fn insert_monuments(conn: &PgConnection, monuments: &mut Vec<Monument>) {
     use domain::schema::monuments;
+    let mut monuments_inserted = 0;
 
     for m in monuments.iter_mut() {
         m.id = Uuid::new_v4().to_string();
-        diesel::insert(m).into(monuments::table)
-            .execute(conn)
-            .expect("Error saving new monument");
-        debug!("new monument added: {:?}", m);
+        match diesel::insert(m).into(monuments::table).execute(conn) {
+            Ok(_) => {
+                debug!("new monument added: {:?}", m);
+                monuments_inserted += 1;
+            }
+            Err(e) => match e {
+                Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _) => {
+                    debug!("monument already exists: {:?}", m)
+                },
+                e => panic!(format!("{}", e))
+            },
+        }
     }
-    info!("{} monuments successfully saved", monuments.len());
+    info!("{} new monuments saved", monuments_inserted);
 }
 
 pub fn insert_licenses(conn: &PgConnection, key: &str) {
@@ -165,16 +173,26 @@ pub fn insert_licenses(conn: &PgConnection, key: &str) {
         Err(e) => panic!(format!("{}", e))
     };
 
-    for rl in licenses.clone() {
+    let mut licenses_inserted = 0;
+
+    for rl in licenses {
         let mut l: License = rl.into();
         l.id = Uuid::new_v4().to_string();
-        diesel::insert(&l).into(licenses::table)
-            .execute(conn)
-            .expect("Error saving new licenses");
-        debug!("new lisense added: {:?}", l);
+        match diesel::insert(&l).into(licenses::table).execute(conn) {
+            Ok(_) => {
+                debug!("new lisense added: {:?}", l);
+                licenses_inserted += 1;
+            }
+            Err(e) => match e {
+                Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _) => {
+                    debug!("license already exists: {:?}", l)
+                },
+                e => panic!(format!("{}", e))
+            },
+        }
     }
 
-    info!("{} licenses successfully saved", licenses.len());
+    info!("{} new licenses saved", licenses_inserted);
 }
 
 pub fn insert_pictures(conn: &PgConnection, monuments: &Vec<Monument>, key: &str) {

@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS licenses
 (
   id         VARCHAR(36) PRIMARY KEY NOT NULL,
-  flickr_id  INT,
+  flickr_id  INT UNIQUE,
   name       TEXT,
   url        TEXT DEFAULT NULL,
 
