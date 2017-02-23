@@ -5,6 +5,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#![feature(proc_macro)]
+
 //extern crate chrono;
 #[macro_use]
 extern crate diesel;
@@ -16,6 +18,11 @@ extern crate env_logger;
 extern crate hyper;
 #[macro_use]
 extern crate log;
+extern crate reqwest;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
 extern crate uuid;
 extern crate xml;
 
@@ -23,19 +30,21 @@ use clap::{App, Arg};
 use diesel::prelude::*;
 use diesel::pg::PgConnection;
 use diesel::migrations;
-use monument::Monument;
+use domain::{Monument, License};
 use std::io::stdout;
 use std::path::Path;
 use uuid::Uuid;
 use xml::reader::{XmlEvent, EventReader};
 
-mod monument;
+mod domain;
+mod flickr_api;
 mod unesco_xml;
 
 struct CmdLineArgs {
     pub pq_addr: String,
     pub migrations: Option<String>,
     pub xml: Option<String>,
+    pub flickr_key: Option<String>,
 }
 
 fn parse_cmdline() -> CmdLineArgs {
@@ -56,12 +65,17 @@ fn parse_cmdline() -> CmdLineArgs {
              .long("xml")
              .help("use local whc xml file")
              .takes_value(true))
+        .arg(Arg::with_name("flickr-key")
+             .long("flickr-key")
+             .help("flicker api key to list pictures of the monuments")
+             .takes_value(true))
         .get_matches();
 
     CmdLineArgs {
         pq_addr: matches.value_of("pq-addr").unwrap().into(),
         migrations: matches.value_of("migrations").map_or(None, |s| Some(s.into())),
         xml: matches.value_of("xml").map_or(None, |s| Some(s.into())),
+        flickr_key: matches.value_of("flickr-key").map_or(None, |s| Some(s.into())),
     }
 }
 
@@ -130,18 +144,41 @@ pub fn run_migrations(conn: &PgConnection, migrations_path: Option<String>) {
     }
 }
 
-pub fn insert_monuments(mut monuments: Vec<Monument>, pq_addr: &str, migrations_path: Option<String>) {
-    use monument::schema::monuments;
-    let conn = establish_connection(pq_addr);
-    run_migrations(&conn, migrations_path);
+pub fn insert_monuments(conn: &PgConnection, monuments: &mut Vec<Monument>) {
+    use domain::schema::monuments;
 
-    for m in &mut monuments {
+    for m in monuments.iter_mut() {
         m.id = Uuid::new_v4().to_string();
         diesel::insert(m).into(monuments::table)
-            .execute(&conn)
-            .expect("Error saving new new monument");
-        info!("new monument added: {:?}", m)
+            .execute(conn)
+            .expect("Error saving new monument");
+        debug!("new monument added: {:?}", m);
     }
+    info!("{} monuments successfully saved", monuments.len());
+}
+
+pub fn insert_licenses(conn: &PgConnection, key: &str) {
+    use domain::schema::licenses;
+
+    let licenses = match flickr_api::get_licenses(key) {
+        Ok(ls) => ls,
+        Err(e) => panic!(format!("{}", e))
+    };
+
+    for rl in licenses.clone() {
+        let mut l: License = rl.into();
+        l.id = Uuid::new_v4().to_string();
+        diesel::insert(&l).into(licenses::table)
+            .execute(conn)
+            .expect("Error saving new licenses");
+        debug!("new lisense added: {:?}", l);
+    }
+
+    info!("{} licenses successfully saved", licenses.len());
+}
+
+pub fn insert_pictures(conn: &PgConnection, monuments: &Vec<Monument>, key: &str) {
+
 }
 
 fn main() {
@@ -154,7 +191,23 @@ fn main() {
             return
         }
     };
-    // println!("file size: {}", whl_payload.len());
-    let monuments = read_xml(&*whl_payload);
-    insert_monuments(monuments, &*args.pq_addr, args.migrations);
+    // get pq connection
+    let conn = establish_connection(&*args.pq_addr);
+
+    // run migration if needed
+    run_migrations(&conn, args.migrations);
+
+
+    // first insert monuments
+    let mut monuments = read_xml(&*whl_payload);
+    insert_monuments(&conn, &mut monuments);
+
+    // then if api key for flickr is used, get picture from flickr
+    match args.flickr_key {
+        Some(key) => {
+            insert_licenses(&conn, &key);
+            insert_pictures(&conn, &monuments, &key);
+        },
+        None => {},
+    }
 }

@@ -5,12 +5,14 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::str::FromStr;
+use flickr_api::License as RawLicense;
 use self::schema::monuments;
+use self::schema::licenses;
+use std::str::FromStr;
 
 pub mod schema;
 
-#[derive(PartialEq, Debug, Queryable, Insertable)]
+#[derive(Clone, PartialEq, Debug, Queryable, Insertable)]
 #[table_name="monuments"]
 pub struct Monument {
     pub id: String,
@@ -95,6 +97,26 @@ impl Monument {
             "transboundary" => self.transboundary = FromStr::from_str(value).ok(),
             "unique_number" => self.unique_number = FromStr::from_str(value).ok(),
             _ => {/* unknown name */}
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug, Queryable, Insertable)]
+#[table_name="licenses"]
+pub struct License {
+    pub id: String,
+    pub flickr_id: i32,
+    pub name: String,
+    pub url: Option<String>,
+}
+
+impl From<RawLicense> for License {
+    fn from(rl: RawLicense) -> Self {
+        License {
+            id: String::new(),
+            flickr_id: rl.id,
+            name: rl.name,
+            url: rl.url,
         }
     }
 }
