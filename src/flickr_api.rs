@@ -106,3 +106,126 @@ pub fn get_place(key: &str, lat: f32, lng: f32) -> Result<String, FindByLatLonEr
             format!("unable to get flickr groupd, {}", e.description())))
     }
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Owner {
+    pub username: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PhotoInfo {
+    pub id: String,
+    pub originalsecret: String,
+    pub license: i32,
+    pub owner: Owner,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GetInfoPhotoPayload {
+    pub photo: PhotoInfo,
+}
+
+pub fn get_photo_info(key: &str, photo_id: &str) -> Result<PhotoInfo, String> {
+    info!("calling flickr.photos.getInfo api");
+    let url = format!("https://api.flickr.com/services/rest/?method=flickr.photos.getInfo&api_key={}&photo_id={}&format=json&nojsoncallback=1", key, photo_id);
+
+    match Client::new().unwrap().get(&*url).send() {
+        Ok(mut r) => {
+            if r.status().is_success() {
+                let mut buf = String::new();
+                match r.read_to_string(&mut buf) {
+                    Ok(_) => {
+                        // unserialize
+                        match serde_json::from_str::<GetInfoPhotoPayload>(&*buf) {
+                            Ok(v) => Ok(v.photo),
+                            Err(e) => {
+                                Err(format!("unable to deserialize payload, try again, {}", e))
+                            }
+                        }
+                    },
+                    Err(e) => Err(format!("unable to read http request payload, try again, {}", e))
+                }
+            } else {
+                Err(format!("unexpected http status, try again"))
+            }
+        },
+        Err(e) => Err(format!("unable to get flickr photo info, {}", e.description()))
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Photo {
+    pub id: String,
+    pub secret: String,
+    pub server: String,
+    pub farm: i32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Photos {
+    pub photo: Vec<Photo>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SearchPhotosPayload {
+    pub photos: Photos,
+}
+
+pub fn search_photos(key: &str, search_str: String, place_id: Option<String>)
+                     -> Result<Vec<Photo>, String> {
+    info!("calling flickr.photos.search api");
+    let search_str = search_str.replace(" ", "+");
+    let with_place_id = match place_id {
+        Some(pid) => _search_photos(key, &*search_str, &*pid),
+        None => Ok(vec![]),
+    };
+    let without_place_id = _search_photos(key, &*search_str, "");
+    resolve_smallest_photos(with_place_id, without_place_id)
+}
+
+fn resolve_smallest_photos(p1: Result<Vec<Photo>, String>, p2: Result<Vec<Photo>, String>)
+                           -> Result<Vec<Photo>, String> {
+    if p1.is_err() {
+        p2
+    } else if p2.is_err() {
+        p1
+    } else {
+        let p1_content = p1.unwrap();
+        let p2_content = p2.unwrap();
+        Ok(match (p1_content.len(), p2_content.len()) {
+            (0, _) => p1_content,
+            (_, 0) => p2_content,
+            (i, j) if i < j => p1_content,
+            (i, j) if j < i => p2_content,
+            (_, _) => unreachable!()
+        })
+    }
+}
+
+fn _search_photos(key: &str, search_str: &str, place_id: &str) -> Result<Vec<Photo>, String> {
+    let url = format!("https://api.flickr.com/services/rest/?method=flickr.photos.search&api_key={}&text={}&license=1%2C2%2C3%2C4%2C5%2C6%2C7%2C9%2C10&place_id={}&format=json&nojsoncallback=1", key, search_str, place_id);
+
+    match Client::new().unwrap().get(&*url).send() {
+        Ok(mut r) => {
+            if r.status().is_success() {
+                let mut buf = String::new();
+                match r.read_to_string(&mut buf) {
+                    Ok(_) => {
+                        // unserialize
+                        match serde_json::from_str::<SearchPhotosPayload>(&*buf) {
+                            Ok(v) => Ok(v.photos.photo),
+                            Err(e) => {
+                                Err(format!("unable to deserialize payload, try again, {}", e))
+                            }
+                        }
+                    },
+                    Err(e) => Err(format!("unable to read http request payload, try again, {}", e))
+                }
+            } else {
+                Err(format!("unexpected http status, try again"))
+            }
+        },
+        Err(e) => Err(format!("unable to get flickr photos, {}", e.description()))
+    }
+
+}

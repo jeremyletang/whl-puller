@@ -5,7 +5,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//extern crate chrono;
+extern crate chrono;
 #[macro_use]
 extern crate diesel;
 #[macro_use]
@@ -32,6 +32,7 @@ use diesel::result::{Error, DatabaseErrorKind};
 use domain::{Monument, License};
 use std::io::stdout;
 use std::path::Path;
+use std::collections::HashMap;
 use uuid::Uuid;
 use xml::reader::{XmlEvent, EventReader};
 use flickr_api::FindByLatLonError;
@@ -196,7 +197,10 @@ pub fn insert_licenses(conn: &PgConnection, key: &str) {
     info!("{} new licenses saved", licenses_inserted);
 }
 
-pub fn insert_pictures(conn: &PgConnection, monuments: &Vec<Monument>, key: &str) {
+pub fn insert_pictures(conn: &PgConnection,
+                       monuments: &Vec<Monument>,
+                       key: &str,
+                       licenses: HashMap<i32, String>) {
     use domain::schema::pictures;
 
     let mut pictures_inserted = 0;
@@ -213,7 +217,40 @@ pub fn insert_pictures(conn: &PgConnection, monuments: &Vec<Monument>, key: &str
                 }
             };
         }
-        println!("NEW GROUP ID: {:?}", pid);
+
+        match m.site {
+            Some(ref name) => {
+                match flickr_api::search_photos(key, name.clone(), pid) {
+                    Ok(photos) => {
+                        for p in photos {
+                            // if picture do not exist already
+                            if !domain::dao::picture_exists(conn, &*p.id) {
+                                let pi = flickr_api::get_photo_info(key, &*p.id)
+                                    .expect("unable to get photo");
+                                let u = format!("https://farm{}.staticflickr.com/{}/{}_{}_o.jpg",
+                                                p.farm, p.server, p.id, pi.originalsecret);
+                                let pic = domain::Picture::new(
+                                    pi.id,
+                                    m.id.clone(),
+                                    licenses.get(&pi.license).unwrap().clone(),
+                                    pi.owner.username,
+                                    u
+                                );
+                                match diesel::insert(&pic).into(pictures::table).execute(conn) {
+                                    Ok(_) => {
+                                        debug!("new picture added: {:?}", pic);
+                                        pictures_inserted += 1;
+                                    },
+                                    Err(e) => panic!("unable to save picture: {:?}", e),
+                                }
+                            }
+                        }
+                    },
+                    Err(e) => panic!(format!("{}", e))
+                }
+            },
+            None => {/* cannot search pictures if no name */}
+        }
     }
 
     info!("{} new pictures saved", pictures_inserted);
@@ -240,11 +277,18 @@ fn main() {
     let mut monuments = read_xml(&*whl_payload);
     insert_monuments(&conn, &mut monuments);
 
+    let monuments = domain::dao::list_monuments(&conn);
     // then if api key for flickr is used, get picture from flickr
     match args.flickr_key {
         Some(key) => {
             insert_licenses(&conn, &key);
-            insert_pictures(&conn, &monuments, &key);
+
+            let licenses = domain::dao::list_licenses(&conn);
+            let mut lmap = HashMap::new();
+            for l in licenses {
+                lmap.insert(l.flickr_id, l.id);
+            }
+            insert_pictures(&conn, &monuments, &key, lmap);
         },
         None => {},
     }

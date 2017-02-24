@@ -5,6 +5,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use chrono;
+use chrono::offset::utc::UTC;
 use flickr_api::License as RawLicense;
 use self::schema::{
     licenses,
@@ -12,8 +14,10 @@ use self::schema::{
     pictures
 };
 use std::str::FromStr;
+use uuid::Uuid;
 
 pub mod schema;
+pub mod dao;
 
 #[derive(Clone, PartialEq, Debug, Queryable, Insertable)]
 #[table_name="monuments"]
@@ -42,10 +46,14 @@ pub struct Monument {
     pub states: Option<String>,
     pub transboundary: Option<i32>,
     pub unique_number: Option<i32>,
+
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
 }
 
 impl Monument {
     pub fn new() -> Monument {
+        let now = chrono::NaiveDateTime::from_timestamp(UTC::now().timestamp(), 0);
         Monument {
             id: String::new(),
             category: None,
@@ -71,6 +79,9 @@ impl Monument {
             states: None,
             transboundary: None,
             unique_number: None,
+
+            created_at: now.clone(),
+            updated_at: now
         }
     }
 
@@ -111,15 +122,21 @@ pub struct License {
     pub flickr_id: i32,
     pub name: String,
     pub url: Option<String>,
+
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
 }
 
 impl From<RawLicense> for License {
     fn from(rl: RawLicense) -> Self {
+        let now = chrono::NaiveDateTime::from_timestamp(UTC::now().timestamp(), 0);
         License {
             id: String::new(),
             flickr_id: rl.id,
             name: rl.name,
             url: rl.url,
+            created_at: now.clone(),
+            updated_at: now
         }
     }
 }
@@ -128,9 +145,33 @@ impl From<RawLicense> for License {
 #[table_name="pictures"]
 pub struct Picture {
     pub id: String,
-    pub flickr_id: i32,
+    pub flickr_id: String,
     pub monument_id: String,
     pub license_id: String,
     pub author: String,
     pub url: String,
+
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
+}
+
+impl Picture {
+    pub fn new(flickr_id: String,
+               monument_id: String,
+               license_id: String,
+               author: String,
+               url: String) -> Picture {
+        let now = chrono::NaiveDateTime::from_timestamp(UTC::now().timestamp(), 0);
+        Picture {
+            id: Uuid::new_v4().to_string(),
+            flickr_id: flickr_id,
+            monument_id: monument_id,
+            license_id: license_id,
+            author: author,
+            url: url,
+
+            created_at: now.clone(),
+            updated_at: now
+        }
+    }
 }
