@@ -1,0 +1,12 @@
+FROM debian:latest
+MAINTAINER Jeremy Letang <letang.jeremy@gmail.com>
+
+RUN apt-get update && apt-get install -y libpq-dev
+
+ADD ./migrations /_whlp/migrations
+ADD whlp /whlp
+
+ENV RUST_LOG=debug
+ENV RUST_BACKTRACE=1
+
+ENTRYPOINT ["/whlp"]
