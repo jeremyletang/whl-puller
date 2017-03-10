@@ -11,11 +11,14 @@ use super::{Picture, Monument, License, LastUpdate};
 
 pub fn update_monument(conn: &PgConnection, m: &Monument) {
     use diesel::{ExecuteDsl, FilterDsl, ExpressionMethods};
-    use domain::schema::monuments::dsl::{monuments, id, site, long_description};
+
+    use domain::schema::monuments::dsl::{monuments, id, site, short_description, long_description};
     let _ = diesel::update(monuments.filter(id.eq(&m.id)))
-        .set(site.eq(&m.site)).execute(conn);
-    let _ = diesel::update(monuments.filter(id.eq(&m.id)))
-        .set(long_description.eq(&m.long_description)).execute(conn);
+        .set((
+            site.eq(&m.site),
+            long_description.eq(&m.long_description),
+            short_description.eq(&m.short_description)
+        )).execute(conn);
 }
 
 pub fn update_last_update(conn: &PgConnection, u: &LastUpdate) {

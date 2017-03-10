@@ -274,23 +274,22 @@ pub fn insert_pictures(conn: &PgConnection,
 fn remove_html_tags(conn: &PgConnection, monuments: &mut Vec<Monument>) {
     use std::borrow::Borrow;
     let re = Regex::new("<[^>]*>").unwrap();
+
+    fn remove_tags(re: &Regex, str: &Option<String>) -> Option<String> {
+        match *str {
+            Some(ref s) => {
+                let res = re.replace_all(s, "");
+                let bres: &str = res.borrow();
+                Some(bres.to_string())
+            },
+            None => {None}
+        }
+    }
+
     for m in monuments {
-        m.site = match m.site {
-            Some(ref s) => {
-                let res = re.replace_all(s, "");
-                let bres: &str = res.borrow();
-                Some(bres.to_string())
-            },
-            None => {None}
-        };
-        m.long_description = match m.long_description {
-            Some(ref s) => {
-                let res = re.replace_all(s, "");
-                let bres: &str = res.borrow();
-                Some(bres.to_string())
-            },
-            None => {None}
-        };
+        m.site = remove_tags(&re, &m.site);
+        m.long_description = remove_tags(&re, &m.long_description);
+        m.short_description = remove_tags(&re, &m.short_description);
         domain::dao::update_monument(conn, m);
     }
 }
