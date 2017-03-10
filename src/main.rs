@@ -16,11 +16,13 @@ extern crate env_logger;
 extern crate hyper;
 #[macro_use]
 extern crate log;
+extern crate regex;
 extern crate reqwest;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+extern crate time;
 extern crate uuid;
 extern crate xml;
 
@@ -30,6 +32,7 @@ use diesel::prelude::*;
 use diesel::pg::PgConnection;
 use diesel::result::{Error, DatabaseErrorKind};
 use domain::{Monument, License};
+use regex::Regex;
 use std::io::stdout;
 use std::path::Path;
 use std::collections::HashMap;
@@ -146,15 +149,18 @@ pub fn run_migrations(conn: &PgConnection, migrations_path: Option<String>) {
 }
 
 pub fn insert_monuments(conn: &PgConnection, monuments: &mut Vec<Monument>) {
-    use domain::schema::monuments;
+    use domain::schema::{monuments, last_updates};
     let mut monuments_inserted = 0;
 
     for m in monuments.iter_mut() {
+        // create monument
         m.id = Uuid::new_v4().to_string();
         match diesel::insert(m).into(monuments::table).execute(conn) {
             Ok(_) => {
                 debug!("new monument added: {:?}", m);
                 monuments_inserted += 1;
+                let u = domain::LastUpdate::new(&*m.id);
+                let _ = diesel::insert(&u).into(last_updates::table).execute(conn);
             }
             Err(e) => match e {
                 Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _) => {
@@ -163,6 +169,7 @@ pub fn insert_monuments(conn: &PgConnection, monuments: &mut Vec<Monument>) {
                 e => panic!(format!("{}", e))
             },
         }
+
     }
     info!("{} new monuments saved", monuments_inserted);
 }
@@ -206,54 +213,86 @@ pub fn insert_pictures(conn: &PgConnection,
     let mut pictures_inserted = 0;
 
     for m in monuments {
-        let mut pid: Option<String> = None;
-        // get place id first
-        if m.latitude.is_some() && m.longitude.is_some() {
-            pid = match flickr_api::get_place(key, m.latitude.unwrap(), m.longitude.unwrap()) {
-                Ok(pid) => Some(pid),
-                Err(e) => match e {
-                    FindByLatLonError::NoMatchingPlace => None,
-                    FindByLatLonError::RequestError(e) => panic!(format!("{}", e))
-                }
-            };
-        }
+        let mut u = domain::dao::last_update_by_monument_id(conn, &*m.id).unwrap();
+        if u.need_refresh() {
+            let mut pid: Option<String> = None;
+            // get place id first
+            if m.latitude.is_some() && m.longitude.is_some() {
+                pid = match flickr_api::get_place(key, m.latitude.unwrap(), m.longitude.unwrap()) {
+                    Ok(pid) => Some(pid),
+                    Err(e) => match e {
+                        FindByLatLonError::NoMatchingPlace => None,
+                        FindByLatLonError::RequestError(e) => panic!(format!("{}", e))
+                    }
+                };
+            }
 
-        match m.site {
-            Some(ref name) => {
-                match flickr_api::search_photos(key, name.clone(), pid) {
-                    Ok(photos) => {
-                        for p in photos {
-                            // if picture do not exist already
-                            if !domain::dao::picture_exists(conn, &*p.id) {
-                                let pi = flickr_api::get_photo_info(key, &*p.id)
-                                    .expect("unable to get photo");
-                                let u = format!("https://farm{}.staticflickr.com/{}/{}_{}_o.jpg",
-                                                p.farm, p.server, p.id, pi.originalsecret);
-                                let pic = domain::Picture::new(
-                                    pi.id,
-                                    m.id.clone(),
-                                    licenses.get(&pi.license).unwrap().clone(),
-                                    pi.owner.username,
-                                    u
-                                );
-                                match diesel::insert(&pic).into(pictures::table).execute(conn) {
-                                    Ok(_) => {
-                                        debug!("new picture added: {:?}", pic);
-                                        pictures_inserted += 1;
-                                    },
-                                    Err(e) => panic!("unable to save picture: {:?}", e),
+            match m.site {
+                Some(ref name) => {
+                    match flickr_api::search_photos(key, name.clone(), pid) {
+                        Ok(photos) => {
+                            for p in photos {
+                                // if picture do not exist already
+                                if !domain::dao::picture_exists(conn, &*p.id) {
+                                    let pi = flickr_api::get_photo_info(key, &*p.id)
+                                        .expect("unable to get photo");
+                                    let u = format!("https://farm{}.staticflickr.com/{}/{}_{}_o.jpg",
+                                                    p.farm, p.server, p.id, pi.originalsecret);
+                                    let pic = domain::Picture::new(
+                                        pi.id,
+                                        m.id.clone(),
+                                        licenses.get(&pi.license).unwrap().clone(),
+                                        pi.owner.username,
+                                        u
+                                    );
+                                    match diesel::insert(&pic).into(pictures::table).execute(conn) {
+                                        Ok(_) => {
+                                            debug!("new picture added: {:?}", pic);
+                                            pictures_inserted += 1;
+                                        },
+                                        Err(e) => panic!("unable to save picture: {:?}", e),
+                                    }
                                 }
                             }
-                        }
-                    },
-                    Err(e) => panic!(format!("{}", e))
-                }
-            },
-            None => {/* cannot search pictures if no name */}
+                        },
+                        Err(e) => panic!(format!("{}", e))
+                    }
+                },
+                None => {/* cannot search pictures if no name */}
+            }
+            // insert this monument in the cash
+            u.set_fresh();
+            let _ = domain::dao::update_last_update(conn, &u);
+        } else {
+            info!("monument {} have been recently updated, skip it.", m.id);
         }
     }
 
     info!("{} new pictures saved", pictures_inserted);
+}
+
+fn remove_html_tags(conn: &PgConnection, monuments: &mut Vec<Monument>) {
+    use std::borrow::Borrow;
+    let re = Regex::new("<[^>]*>").unwrap();
+    for m in monuments {
+        m.site = match m.site {
+            Some(ref s) => {
+                let res = re.replace_all(s, "");
+                let bres: &str = res.borrow();
+                Some(bres.to_string())
+            },
+            None => {None}
+        };
+        m.long_description = match m.long_description {
+            Some(ref s) => {
+                let res = re.replace_all(s, "");
+                let bres: &str = res.borrow();
+                Some(bres.to_string())
+            },
+            None => {None}
+        };
+        domain::dao::update_monument(conn, m);
+    }
 }
 
 fn main() {
@@ -272,12 +311,11 @@ fn main() {
     // run migration if needed
     run_migrations(&conn, args.migrations);
 
-
     // first insert monuments
     let mut monuments = read_xml(&*whl_payload);
     insert_monuments(&conn, &mut monuments);
 
-    let monuments = domain::dao::list_monuments(&conn);
+    let mut monuments = domain::dao::list_monuments(&conn);
     // then if api key for flickr is used, get picture from flickr
     match args.flickr_key {
         Some(key) => {
@@ -293,4 +331,6 @@ fn main() {
         None => {},
     }
 
+    // remove html
+    remove_html_tags(&conn, &mut monuments);
 }

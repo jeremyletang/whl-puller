@@ -50,7 +50,7 @@ pub fn get_licenses(key: &str) -> Result<Vec<License>, String> {
                 Err(format!("unexpected http status, try again"))
             }
         },
-        Err(e) => Err(format!("unable to get flickr licenses, {}", e.description()))
+        Err(e) => Err(format!("unable to get flickr licenses, {}, {:?}", e.description(), e.cause()))
     }
 }
 
@@ -135,6 +135,7 @@ pub fn get_photo_info(key: &str, photo_id: &str) -> Result<PhotoInfo, String> {
                 let mut buf = String::new();
                 match r.read_to_string(&mut buf) {
                     Ok(_) => {
+                        info!("body: {}", buf);
                         // unserialize
                         match serde_json::from_str::<GetInfoPhotoPayload>(&*buf) {
                             Ok(v) => Ok(v.photo),
@@ -197,13 +198,13 @@ fn resolve_smallest_photos(p1: Result<Vec<Photo>, String>, p2: Result<Vec<Photo>
             (_, 0) => p2_content,
             (i, j) if i < j => p1_content,
             (i, j) if j < i => p2_content,
-            (_, _) => unreachable!()
+            (_, _) => p1_content,
         })
     }
 }
 
 fn _search_photos(key: &str, search_str: &str, place_id: &str) -> Result<Vec<Photo>, String> {
-    let url = format!("https://api.flickr.com/services/rest/?method=flickr.photos.search&api_key={}&text={}&license=1%2C2%2C3%2C4%2C5%2C6%2C7%2C9%2C10&place_id={}&format=json&nojsoncallback=1", key, search_str, place_id);
+    let url = format!("https://api.flickr.com/services/rest/?method=flickr.photos.search&per_page=10&api_key={}&text={}&license=1%2C2%2C3%2C4%2C5%2C6%2C7%2C9%2C10&place_id={}&format=json&nojsoncallback=1", key, search_str, place_id);
 
     match Client::new().unwrap().get(&*url).send() {
         Ok(mut r) => {

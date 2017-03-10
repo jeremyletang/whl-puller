@@ -11,13 +11,19 @@ use flickr_api::License as RawLicense;
 use self::schema::{
     licenses,
     monuments,
-    pictures
+    pictures,
+    last_updates
 };
 use std::str::FromStr;
+use time::Duration;
 use uuid::Uuid;
 
 pub mod schema;
 pub mod dao;
+
+fn now() -> chrono::NaiveDateTime {
+    chrono::NaiveDateTime::from_timestamp(UTC::now().timestamp(), 0)
+}
 
 #[derive(Clone, PartialEq, Debug, Queryable, Insertable)]
 #[table_name="monuments"]
@@ -53,7 +59,6 @@ pub struct Monument {
 
 impl Monument {
     pub fn new() -> Monument {
-        let now = chrono::NaiveDateTime::from_timestamp(UTC::now().timestamp(), 0);
         Monument {
             id: String::new(),
             category: None,
@@ -80,8 +85,8 @@ impl Monument {
             transboundary: None,
             unique_number: None,
 
-            created_at: now.clone(),
-            updated_at: now
+            created_at: now(),
+            updated_at: now()
         }
     }
 
@@ -129,14 +134,13 @@ pub struct License {
 
 impl From<RawLicense> for License {
     fn from(rl: RawLicense) -> Self {
-        let now = chrono::NaiveDateTime::from_timestamp(UTC::now().timestamp(), 0);
         License {
             id: String::new(),
             flickr_id: rl.id,
             name: rl.name,
             url: rl.url,
-            created_at: now.clone(),
-            updated_at: now
+            created_at: now(),
+            updated_at: now()
         }
     }
 }
@@ -161,7 +165,6 @@ impl Picture {
                license_id: String,
                author: String,
                url: String) -> Picture {
-        let now = chrono::NaiveDateTime::from_timestamp(UTC::now().timestamp(), 0);
         Picture {
             id: Uuid::new_v4().to_string(),
             flickr_id: flickr_id,
@@ -170,8 +173,38 @@ impl Picture {
             author: author,
             url: url,
 
-            created_at: now.clone(),
-            updated_at: now
+            created_at: now(),
+            updated_at: now()
         }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug, Queryable, Insertable, Identifiable)]
+#[table_name="last_updates"]
+pub struct LastUpdate {
+    pub id: String,
+    pub monument_id: String,
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
+}
+
+impl LastUpdate {
+    pub fn new<S: Into<String>>(monument_id: S) -> LastUpdate {
+        LastUpdate {
+            id: Uuid::new_v4().to_string(),
+            monument_id: monument_id.into(),
+            created_at: now(),
+            updated_at: now() - Duration::days(365),
+        }
+    }
+
+    pub fn need_refresh(&self) -> bool {
+        // reupdate if last update is more than a week ago
+        let a_week_ago = now() - Duration::days(7);
+        self.updated_at < a_week_ago
+    }
+
+    pub fn set_fresh(&mut self) {
+        self.updated_at = now();
     }
 }
